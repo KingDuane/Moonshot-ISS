@@ -37,7 +37,7 @@ from boot_logo import boot_image_data, BOOT_IMAGE_WIDTH, BOOT_IMAGE_HEIGHT
 
 WIFI_SSID = "YOUR_SSID"
 WIFI_PASSWORD = "YOUR_PASSWORD"
-USER_LAT = 40.7128
+USER_LAT = 40.7128      # fallback if geolocation fails
 USER_LON = -74.0060
 UPDATE_INTERVAL = 30000
 MAX_RADAR_DISTANCE = 12000
@@ -56,6 +56,8 @@ class ISSTracker:
         self.last_update = 0
         self.trajectory_points = []
         self.max_trajectory_points = 1000
+        self.sweep_angle = 0
+        self._last_sweep_time = 0
 
         self.lcd.set_bl_pwm(0)
         self.lcd.fill(0x0000)
@@ -283,6 +285,20 @@ class ISSTracker:
             self.lcd.show()
             time.sleep_ms(STEP_DELAY)
 
+    def fetch_location(self):
+        """Fetch approximate location via IP geolocation"""
+        global USER_LAT, USER_LON
+        try:
+            response = urequests.get('http://ip-api.com/json/?fields=lat,lon')
+            data = response.json()
+            response.close()
+            USER_LAT = data['lat']
+            USER_LON = data['lon']
+            print(f"Geolocation: {USER_LAT}, {USER_LON}")
+            gc.collect()
+        except:
+            print("Geolocation failed, using fallback coordinates")
+
     def connect_wifi(self):
         """Connect to WiFi network with visual feedback"""
         wlan = network.WLAN(network.STA_IF)
@@ -305,13 +321,8 @@ class ISSTracker:
         self.lcd.show()
 
     def fetch_iss_data(self):
+        """Fetch ISS position from API"""
         try:
-            gc.collect()
-
-            if not network.WLAN(network.STA_IF).isconnected():
-                self.handle_connection_loss()
-                return False
-
             response = urequests.get('http://api.open-notify.org/iss-now.json')
             data = response.json()
             response.close()
@@ -319,11 +330,10 @@ class ISSTracker:
                 'lat': float(data['iss_position']['latitude']),
                 'lon': float(data['iss_position']['longitude'])
             }
-            gc.collect()
             return True
         except:
-            self.handle_connection_loss()
             return False
+
 
     def calculate_position(self):
         """Calculate ISS position with basic spherical geometry"""
@@ -358,7 +368,7 @@ class ISSTracker:
             return 1000, 0
 
     def draw_world_map(self):
-        """Draw world map as background with correct geographical positioning"""
+        """Draw world map as background with horizontal wrapping"""
         x_offset = int(MAP_WIDTH/2 + (USER_LON * MAP_WIDTH/360))
         y_offset = int(MAP_HEIGHT/2 - (USER_LAT * MAP_HEIGHT/180))
 
@@ -367,23 +377,26 @@ class ISSTracker:
 
         map_color = 0x6631
 
-        for y in range(0, MAP_HEIGHT, 2):
-            y_pos = start_y + y
-            if 0 <= y_pos < 240:
-                for x in range(0, MAP_WIDTH, 2):
-                    x_pos = start_x + x
-                    if 0 <= x_pos < 240:
-                        byte_index = (y * MAP_WIDTH + x) // 8
-                        bit_index = 7 - ((y * MAP_WIDTH + x) % 8)
-                        if byte_index < len(map_data):
-                            if map_data[byte_index] & (1 << bit_index):
-                                self.lcd.pixel(x_pos, y_pos, map_color)
+        for screen_y in range(0, 240, 2):
+            map_y = screen_y - start_y
+            if 0 <= map_y < MAP_HEIGHT:
+                for screen_x in range(0, 240, 2):
+                    map_x = (screen_x - start_x) % MAP_WIDTH
+                    byte_index = (map_y * MAP_WIDTH + map_x) // 8
+                    bit_index = 7 - ((map_y * MAP_WIDTH + map_x) % 8)
+                    if byte_index < len(map_data):
+                        if map_data[byte_index] & (1 << bit_index):
+                            self.lcd.pixel(screen_x, screen_y, map_color)
 
     def draw_radar(self):
         """Main loop"""
         current_time = time.ticks_ms()
         center_x, center_y = 120, 120
-        sweep_angle = (current_time // 50) % 360
+
+        elapsed = time.ticks_diff(current_time, self._last_sweep_time)
+        self._last_sweep_time = current_time
+        self.sweep_angle = (self.sweep_angle + elapsed / 50) % 360
+        sweep_angle = int(self.sweep_angle)
 
         self.lcd.fill(0x0000)
 
@@ -498,6 +511,7 @@ class ISSTracker:
         try:
             self.boot_animation()
             self.connect_wifi()
+            self.fetch_location()
 
             start_time = time.ticks_ms()
             self.last_update = start_time
@@ -520,8 +534,9 @@ class ISSTracker:
                     last_wifi_check = current_time
 
                 if time.ticks_diff(current_time, self.last_update) >= UPDATE_INTERVAL:
-                    if self.fetch_iss_data():
-                        self.last_update = current_time
+                    self.fetch_iss_data()
+                    self.last_update = current_time
+                    gc.collect()
 
                 self.draw_radar()
                 time.sleep_ms(25)
