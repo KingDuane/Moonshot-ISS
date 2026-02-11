@@ -395,6 +395,7 @@ class ISSTracker:
 
         elapsed = time.ticks_diff(current_time, self._last_sweep_time)
         self._last_sweep_time = current_time
+        elapsed = min(elapsed, 100)  # cap to avoid jump after fetch pause
         self.sweep_angle = (self.sweep_angle + elapsed / 50) % 360
         sweep_angle = int(self.sweep_angle)
 
