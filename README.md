@@ -25,6 +25,8 @@ A realtime International Space Station tracker that runs on a tiny 1.28-inch rou
 
 The surprise discovery: leave it running for a few hours and the orbital trail produces beautiful spirographic mandala patterns. The ISS completes an orbit every ~90 minutes at a 51.6-degree inclination, and because the Earth rotates beneath it, the dashed trail traces sinusoidal curves that overlap into intricate geometric forms — revealing the curvature of the Earth in miniature.
 
+![Moonshot ISS Tracker](images/moonshot-iss.png)
+
 ![ISS Tracker on device](images/iss-tracker-photo.jpg)
 
 ## Hardware
@@ -65,3 +67,4 @@ The surprise discovery: leave it running for a few hours and the orbital trail p
 | `boot_logo.py` | Boot animation image data (RGB565) |
 | `iss_icon.py` | ISS silhouette sprite (15x11 pixels) |
 | `world_map.py` | World map bitmap (344x207 pixels) |
+| `convert_screenshot.py` | Converts device screenshots (RGB565) to PNG — runs on host computer |

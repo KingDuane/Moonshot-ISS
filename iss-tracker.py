@@ -28,6 +28,7 @@ import network
 import urequests
 import math
 import time
+import os
 from machine import Pin
 import gc
 from lcd_1inch28 import LCD_1inch28
@@ -59,9 +60,53 @@ class ISSTracker:
         self.sweep_angle = 0
         self._last_sweep_time = 0
 
+        # BOOT button (GPIO 0) for screenshots
+        self._screenshot_requested = False
+        self._screenshot_count = self._count_existing_screenshots()
+        self._screenshot_max = 10
+        self._boot_btn = Pin(0, Pin.IN, Pin.PULL_UP)
+        self._boot_btn.irq(trigger=Pin.IRQ_FALLING, handler=self._on_boot_press)
+
         self.lcd.set_bl_pwm(0)
         self.lcd.fill(0x0000)
         self.lcd.show()
+
+    def _on_boot_press(self, pin):
+        """ISR – just set a flag, no I/O allowed here."""
+        self._screenshot_requested = True
+
+    def _count_existing_screenshots(self):
+        """Scan filesystem for existing screenshot_NNN.bin files to resume numbering."""
+        count = 0
+        try:
+            for f in os.listdir('/'):
+                if f.startswith('screenshot_') and f.endswith('.bin'):
+                    count += 1
+        except:
+            pass
+        return count
+
+    def save_screenshot(self):
+        """Save current framebuffer as raw RGB565 binary to flash."""
+        if self._screenshot_count >= self._screenshot_max:
+            print(f"Screenshot limit reached ({self._screenshot_max}). Delete files to free space.")
+            return
+
+        self._screenshot_count += 1
+        filename = f"screenshot_{self._screenshot_count:03d}.bin"
+        try:
+            with open(filename, 'wb') as f:
+                f.write(self.lcd.buffer)
+            print(f"Screenshot saved: {filename} ({self._screenshot_count}/{self._screenshot_max})")
+        except Exception as e:
+            print(f"Screenshot failed: {e}")
+            self._screenshot_count -= 1
+            return
+
+        # Visual feedback: brief backlight flash
+        self.lcd.set_bl_pwm(0)
+        time.sleep_ms(60)
+        self.lcd.set_bl_pwm(65535)
 
     TINY_FONT = {
         '0': [0b111,
@@ -540,6 +585,11 @@ class ISSTracker:
                     gc.collect()
 
                 self.draw_radar()
+
+                if self._screenshot_requested:
+                    self._screenshot_requested = False
+                    self.save_screenshot()
+
                 time.sleep_ms(25)
 
         except KeyboardInterrupt:
