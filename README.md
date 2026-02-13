@@ -27,8 +27,6 @@ The surprise discovery: leave it running for a few hours and the orbital trail p
 
 ![Moonshot ISS Tracker](images/moonshot-iss.png)
 
-![ISS Tracker on device](images/iss-tracker-photo.jpg)
-
 ## Hardware
 
 - **Board:** [ESP32-S3-Touch-LCD-1.28](https://www.waveshare.com/esp32-s3-touch-lcd-1.28.htm) (Waveshare)
